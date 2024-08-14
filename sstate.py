@@ -36,7 +36,7 @@ def reformat_scontrol_output(scontrol_output, node_data_list=[]):
     return node_data_list
 
 # This function will filter out unwanted nodes if a partition is specified
-def filter_partition_node_data(node_data_list, partition_node_data_list=[]):
+def filter_partition_node_data(args, node_data_list, partition_node_data_list=[]):
     for node in node_data_list:
         for line in node:
             if line.split("=")[0].strip() == "Partitions":
@@ -236,7 +236,8 @@ def parse_node_data(node_data_list):
                    headers=['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'PercentUsedCPU', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem',
                             'PercentUsedMem', 'AllocGPU', 'AvailGPU', 'TotalGPU', 'PercentUsedGPU'], floatfmt=".2f"))
 
-if __name__ == '__main__':
+# Main function
+def main():
     # Parse command line arguments
     args = parse_args()
 
@@ -246,8 +247,12 @@ if __name__ == '__main__':
 
     # If a partition is specified, filter out unwanted nodes from reformatted scontrol output
     if args.partition:
-        node_data_list = filter_partition_node_data(node_data_list)
+        node_data_list = filter_partition_node_data(args, node_data_list)
 
     # Parse through the node data to get available, allocated, and total resources
     # This will also calculate some resource averages and usage percents, as well as print output
     parse_node_data(node_data_list)
+
+# Execute main function
+if __name__ == '__main__':
+    main()
