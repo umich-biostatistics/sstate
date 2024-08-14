@@ -1,8 +1,9 @@
 #!/bin/env python3
 
-from tabulate import tabulate
-import subprocess
 import argparse
+import subprocess
+import re
+from tabulate import tabulate
 
 
 # This function converts MB to larger units
@@ -21,10 +22,26 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+# This function will take the scontrol output and reformat the node data into a list of kv pairs
+# This will allow for better parsing/filtering of the node data later in the script
+def reformat_scontrol_output(scontrol_output, node_data_list=[]):
+    scontrol_output = scontrol_output.splitlines()
+    for node_output in scontrol_output:
+        temp_data_list = []
+        node = re.split(r"(\w+=)", node_output)
+        for element, line in enumerate(node):
+            if re.match(r"(\w+=)", line):
+                temp_data_list.append("{0}{1}".format(node[element], node[element+1]))
+        node_data_list.append(temp_data_list)
+    return node_data_list
+
 if __name__ == '__main__':
+    # Parse command line arguments
     args = parse_args()
-    # Calls the scontrol script and gets its output
-    output = subprocess.check_output('/usr/bin/scontrol show nodes --oneliner', shell=True).decode()
+
+    # Get node data via scontrol and reformat it for easier usability
+    scontrol_output = subprocess.check_output("/usr/bin/scontrol show nodes --oneliner", shell=True).decode()
+    node_data_list = reformat_scontrol_output(scontrol_output)
 
     # Initializes variables to track values
     rows = []
