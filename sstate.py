@@ -35,6 +35,22 @@ def reformat_scontrol_output(scontrol_output, node_data_list=[]):
         node_data_list.append(temp_data_list)
     return node_data_list
 
+# This function will filter out unwanted nodes if a partition is specified
+def filter_partition_node_data(node_data_list, partition_node_data_list=[]):
+    for node in node_data_list:
+        for line in node:
+            if line.split("=")[0].strip() == "Partitions":
+                if args.partition == "debug":
+                    if line.split("=")[1].strip() != "debug":
+                        continue
+                    else:
+                        partition_node_data_list.append(node)
+                else:
+                    for partition in line.split("=")[1].split(","):
+                        if args.partition.lower() == partition.strip():
+                            partition_node_data_list.append(node)
+    return partition_node_data_list
+
 if __name__ == '__main__':
     # Parse command line arguments
     args = parse_args()
@@ -42,6 +58,10 @@ if __name__ == '__main__':
     # Get node data via scontrol and reformat it for easier usability
     scontrol_output = subprocess.check_output("/usr/bin/scontrol show nodes --oneliner", shell=True).decode()
     node_data_list = reformat_scontrol_output(scontrol_output)
+
+    # If a partition is specified, filter out unwanted nodes from reformatted scontrol output
+    if args.partition:
+        node_data_list = filter_partition_node_data(node_data_list)
 
     # Initializes variables to track values
     rows = []
