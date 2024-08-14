@@ -1,6 +1,5 @@
 #!/bin/env python3
 
-import os
 import argparse
 import subprocess
 import re
@@ -11,12 +10,12 @@ def parse_args():
         description="Query node data in Slurm.",
         usage="""
         # Querying all nodes:
-        {0}
+        sstate
 
         # Querying a specific partition with example:
-        {0} -p $partition_name
-        {0} -p gpu
-        """.format(str(os.path.basename(__file__)))
+        sstate -p $partition_name
+        sstate -p gpu
+        """
     )
     parser.add_argument(
         "-p", "--partition",
