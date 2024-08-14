@@ -1,10 +1,31 @@
 #!/bin/env python3
 
+import os
 import argparse
 import subprocess
 import re
 from tabulate import tabulate
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Query node data in Slurm.",
+        usage="""
+        # Querying all nodes:
+        {0}
+
+        # Querying a specific partition with example:
+        {0} -p $partition_name
+        {0} -p gpu
+        """.format(str(os.path.basename(__file__)))
+    )
+    parser.add_argument(
+        "-p", "--partition",
+        help="Query specific partition. If this is not specified all nodes will be shown.",
+        type=str,
+        metavar=""
+    )
+    args = parser.parse_args()
+    return args
 
 # This function converts MB to larger units
 def human_readable(num, suffix='B'):
@@ -13,14 +34,6 @@ def human_readable(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--partition", help="Specify partition (standard, gpu, largemem, debug, standard-oc). "
-                                                  "If this is not specified all nodes will be shown")
-    args = parser.parse_args()
-    return args
 
 # This function will take the scontrol output and reformat the node data into a list of kv pairs
 # This will allow for better parsing/filtering of the node data later in the script
