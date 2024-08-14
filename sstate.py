@@ -41,9 +41,9 @@ def reformat_scontrol_output(scontrol_output, node_data_list=[]):
     scontrol_output = scontrol_output.splitlines()
     for node_output in scontrol_output:
         temp_data_list = []
-        node = re.split(r"(\w+=)", node_output)
+        node = re.split(r"([A-Z]\w+=)", node_output)
         for element, line in enumerate(node):
-            if re.match(r"(\w+=)", line):
+            if re.match(r"([A-Z]\w+=)", line):
                 temp_data_list.append("{0}{1}".format(node[element], node[element+1]))
         node_data_list.append(temp_data_list)
     return node_data_list
@@ -87,12 +87,13 @@ def parse_node_data(node_data_list):
     # This will also get resources and calculate resource totals and averages
     for node in node_data_list:
         overall_node += 1
+        gpu_tot = 'N/A'
+        gpu_alloc = 'N/A'
+        percent_used_gpu = 'N/A'
+
         for line in node:
-            key = line.split("=")[0].strip()
-            value = line.split("=")[1].strip()
-            gpu_tot = 'N/A'
-            gpu_alloc = 'N/A'
-            percent_used_gpu = 'N/A'
+            key = re.split(r"([A-Z]\w+)(?==)", line)[1]
+            value = re.split(r"([A-Z]\w+=)", line)[2]
 
             # Changes values based on key
             if key == "NodeName":
@@ -136,18 +137,18 @@ def parse_node_data(node_data_list):
                 node_state = value
             elif key == "CfgTRES":
                 # If there is gpu data, gets the total number of gpus
-                if "gres/gpu" in line:
+                if "gres/gpu" in value:
                     try:
-                        gpu_tot = int(line.split(",")[-1].split("=")[1])
+                        gpu_tot = int(value.split(",")[-1].split("=")[1])
                         overall_total_gpu += gpu_tot
                     except ValueError:
                         gpu_tot = 0
                         overall_total_gpu += gpu_tot
             elif key == "AllocTRES":
                 # If there is gpu data, get the allocated number of gpus
-                if "gres/gpu" in line:
+                if "gres/gpu" in value:
                     try:
-                        gpu_alloc = int(line.split(",")[-1].split("=")[1])
+                        gpu_alloc = int(value.split(",")[-1].split("=")[1])
                         overall_alloc_gpu += gpu_alloc
                     except ValueError:
                         gpu_alloc = 0
