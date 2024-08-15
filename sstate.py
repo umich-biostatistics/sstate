@@ -1,9 +1,30 @@
 #!/bin/env python3
 
-from tabulate import tabulate
-import subprocess
 import argparse
+import subprocess
+import re
+from tabulate import tabulate
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Query node data in Slurm.",
+        usage="""
+        # Querying all nodes:
+        sstate
+
+        # Querying a specific partition with example:
+        sstate -p $partition_name
+        sstate -p gpu
+        """
+    )
+    parser.add_argument(
+        "-p", "--partition",
+        help="Query specific partition. If this is not specified all nodes will be shown.",
+        type=str,
+        metavar=""
+    )
+    args = parser.parse_args()
+    return args
 
 # This function converts MB to larger units
 def human_readable(num, suffix='B'):
@@ -13,20 +34,39 @@ def human_readable(num, suffix='B'):
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
 
+# This function will take the scontrol output and reformat the node data into a list of kv pairs
+# This will allow for better parsing/filtering of the node data later in the script
+def reformat_scontrol_output(scontrol_output, node_data_list=[]):
+    scontrol_output = scontrol_output.splitlines()
+    for node_output in scontrol_output:
+        temp_data_list = []
+        node = re.split(r"([A-Z]\w+=)", node_output)
+        for element, line in enumerate(node):
+            if re.match(r"([A-Z]\w+=)", line):
+                temp_data_list.append("{0}{1}".format(node[element], node[element+1]))
+        node_data_list.append(temp_data_list)
+    return node_data_list
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--partition", help="Specify partition (standard, gpu, largemem, debug, standard-oc). "
-                                                  "If this is not specified all nodes will be shown")
-    args = parser.parse_args()
-    return args
+# This function will filter out unwanted nodes if a partition is specified
+def filter_partition_node_data(args, node_data_list, partition_node_data_list=[]):
+    for node in node_data_list:
+        for line in node:
+            if line.split("=")[0].strip() == "Partitions":
+                if args.partition == "debug":
+                    if line.split("=")[1].strip() != "debug":
+                        continue
+                    else:
+                        partition_node_data_list.append(node)
+                else:
+                    for partition in line.split("=")[1].split(","):
+                        if args.partition.lower() == partition.strip():
+                            partition_node_data_list.append(node)
+    return partition_node_data_list
 
-if __name__ == '__main__':
-    args = parse_args()
-    # Calls the scontrol script and gets its output
-    output = subprocess.check_output('/usr/bin/scontrol show nodes --oneliner', shell=True).decode()
-
-    # Initializes variables to track values
+# This function will parse through node data to get available, allocated, and total resources
+# It will also calculate some resource averages and usage percents, as well as print output
+def parse_node_data(node_data_list):
+    # Initializes variables to track resource values
     rows = []
     overall_node = 0
     overall_alloc_cpu = 0
@@ -42,113 +82,76 @@ if __name__ == '__main__':
     overall_available_gpu = 0
     overall_total_gpu = 0
 
-    # Every line represents a new node
-    for line in output.splitlines():
-        # If a partition is specified, only those values are shown
-        if args.partition and args.partition != 'all':
-            # Initializes a bool that will send the loop back to the start if the partition is incorrect
-            back_to_start = False
-            # Searches for the partition tag
-            for pair in line.split():
-                if pair.split('=')[0] == 'Partitions':
-                    # If the partition is debug, only shows the nodes that exclusively specified debug
-                    if args.partition == 'debug':
-                        if pair.split('=')[1] != 'debug':
-                            back_to_start = True
-                            break
-                    else:
-                        # Searches if the correct partition is listed in the partition tags for that node
-                        found_correct_partition = False
-                        for parition_type in pair.split('=')[1].split(','):
-                            if parition_type == args.partition:
-                                found_correct_partition = True
-                                break
-                        # If the correct partition is not found, the line is ignored and a new line is loaded
-                        if not found_correct_partition:
-                            back_to_start = True
-                            break
-            if back_to_start:
-                continue
-
-
+    # Loop through each node and gather scontrol info on them
+    # This will also get resources and calculate resource totals and averages
+    for node in node_data_list:
         overall_node += 1
-
-        # This gets all key value pairs by splitting the line on whitespace
-        key_vals = line.split()
-        node_name = key_vals[0].split("=")[1]
-
-        # Initializes the GPU variables to N/A. This gets overwritten if the node has GPUs
         gpu_tot = 'N/A'
         gpu_alloc = 'N/A'
         percent_used_gpu = 'N/A'
 
-        # Loops through all key value pairs in the line
-        for pair in key_vals:
-            # Gets the key of the pair
-            key = pair.split('=')[0]
-
-            # Only gets the value if there is one
-            val = None
-            if len(pair.split('=')) > 1:
-                val = pair.split('=')[1]
+        for line in node:
+            key = re.split(r"([A-Z]\w+)(?==)", line)[1]
+            value = re.split(r"([A-Z]\w+=)", line)[2]
 
             # Changes values based on key
-            if key == 'CPUAlloc':
+            if key == "NodeName":
+                node_name = value           
+            elif key == "CPUAlloc":
                 try:
-                    cpu_alloc = int(val)
+                    cpu_alloc = int(value)
                     overall_alloc_cpu += cpu_alloc
                 except ValueError:
                     cpu_alloc = 0
                     overall_alloc_cpu += cpu_alloc
-            elif key == 'CPUTot':
+            elif key == "CPUTot":
                 try:
-                    cpu_tot = int(val)
+                    cpu_tot = int(value)
                     overall_total_cpu += cpu_tot
                 except ValueError:
                     cpu_tot = 0
                     overall_total_cpu += cpu_tot
-            elif key == 'CPULoad':
+            elif key == "CPULoad":
                 try:
-                    cpu_load = float(val)
+                    cpu_load = float(value)
                     overall_cpu_load += cpu_load
                 except ValueError:
                     cpu_load = float(0)
                     overall_cpu_load += cpu_load
-            elif key == 'RealMemory':
+            elif key == "RealMemory":
                 try:
-                    total_mem = int(val)
+                    total_mem = int(value)
                     overall_total_mem += total_mem
                 except ValueError:
                     total_mem = 0
                     overall_total_mem += total_mem
-            elif key == 'AllocMem':
+            elif key == "AllocMem":
                 try:
-                    alloc_mem = int(val)
+                    alloc_mem = int(value)
                     overall_alloc_mem += alloc_mem
                 except ValueError:
                     alloc_mem = 0
                     overall_alloc_mem += alloc_mem
-            elif key == 'State':
-                node_state = val
-            elif key == 'CfgTRES':
+            elif key == "State":
+                node_state = value
+            elif key == "CfgTRES":
                 # If there is gpu data, gets the total number of gpus
-                if 'gres/gpu' in pair:
+                if "gres/gpu" in value:
                     try:
-                        gpu_tot = int(pair.split(",")[-1].split("=")[1])
+                        gpu_tot = int(value.split(",")[-1].split("=")[1])
                         overall_total_gpu += gpu_tot
                     except ValueError:
                         gpu_tot = 0
                         overall_total_gpu += gpu_tot
-            elif key == 'AllocTRES':
+            elif key == "AllocTRES":
                 # If there is gpu data, get the allocated number of gpus
-                if 'gres/gpu' in pair:
+                if "gres/gpu" in value:
                     try:
-                        gpu_alloc = int(pair.split(",")[-1].split("=")[1])
+                        gpu_alloc = int(value.split(",")[-1].split("=")[1])
                         overall_alloc_gpu += gpu_alloc
                     except ValueError:
                         gpu_alloc = 0
                         overall_alloc_gpu += gpu_alloc
-
         # Calculates percent used for cpu
         percent_used_cpu = 0
         if cpu_tot > 0:
@@ -245,3 +248,24 @@ if __name__ == '__main__':
                     overall_available_gpu, overall_total_gpu, overall_percent_used_gpu]],
                    headers=['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'PercentUsedCPU', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem',
                             'PercentUsedMem', 'AllocGPU', 'AvailGPU', 'TotalGPU', 'PercentUsedGPU'], floatfmt=".2f"))
+
+# Main function
+def main():
+    # Parse command line arguments
+    args = parse_args()
+
+    # Get node data via scontrol and reformat it for easier usability
+    scontrol_output = subprocess.check_output("/usr/bin/scontrol show nodes --oneliner", shell=True).decode()
+    node_data_list = reformat_scontrol_output(scontrol_output)
+
+    # If a partition is specified, filter out unwanted nodes from reformatted scontrol output
+    if args.partition:
+        node_data_list = filter_partition_node_data(args, node_data_list)
+
+    # Parse through the node data to get available, allocated, and total resources
+    # This will also calculate some resource averages and usage percents, as well as print output
+    parse_node_data(node_data_list)
+
+# Execute main function
+if __name__ == '__main__':
+    main()
