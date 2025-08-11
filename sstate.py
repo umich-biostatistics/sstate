@@ -127,7 +127,7 @@ def parse_node_data(node_data_list):
                     overall_alloc_mem += alloc_mem
             elif key == "State":
                 node_state = value
-            elif key == "CfgTRES":
+
         # Calculates percent used for cpu
         percent_used_cpu = 0
         if cpu_tot > 0:
