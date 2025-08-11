@@ -203,7 +203,7 @@ def main():
     args = parse_args()
 
     # Get node data via scontrol and reformat it for easier usability
-    scontrol_output = subprocess.check_output("/usr/bin/scontrol show nodes --oneliner", shell=True).decode()
+    scontrol_output = subprocess.check_output("$(/usr/bin/which scontrol) show nodes --oneliner", shell=True).decode()
     node_data_list = reformat_scontrol_output(scontrol_output)
 
     # If a partition is specified, filter out unwanted nodes from reformatted scontrol output
