@@ -61,6 +61,40 @@ def colorize_node_state(state):
         # Default color for unknown states
         return f"{Fore.CYAN}{state}{Style.RESET_ALL}"
 
+def format_percentage(percentage):
+    """Format percentage with visual bar indicator"""
+    if percentage >= 90:
+        color = Fore.RED
+        bar_length = 10
+    elif percentage >= 75:
+        color = Fore.YELLOW
+        bar_length = 8
+    elif percentage >= 50:
+        color = Fore.CYAN
+        bar_length = 6
+    elif percentage >= 25:
+        color = Fore.GREEN
+        bar_length = 4
+    else:
+        color = Fore.GREEN
+        bar_length = 2
+    
+    bar = "█" * min(int(percentage / 10), 10)
+    return f"{color}{percentage:5.1f}%{Style.RESET_ALL} {color}{bar}{Style.RESET_ALL}"
+
+def print_section_header(title):
+    """Print a styled section header"""
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}{'=' * 80}")
+    print(f"{title:^80}")
+    print(f"{'=' * 80}{Style.RESET_ALL}")
+
+def create_colored_headers(headers):
+    """Create colored table headers"""
+    colored_headers = []
+    for header in headers:
+        colored_headers.append(f"{Fore.BLUE}{Style.BRIGHT}{header}{Style.RESET_ALL}")
+    return colored_headers
+
 # This function will take the scontrol output and reformat the node data into a list of kv pairs
 # This will allow for better parsing/filtering of the node data later in the script
 def reformat_scontrol_output(scontrol_output, node_data_list=[]):
@@ -191,7 +225,7 @@ def parse_node_data(node_data_list):
         total_mem = human_readable(total_mem)
         avail_mem = human_readable(avail_mem)
 
-        rows.append([node_name, cpu_alloc, cpu_avail, cpu_tot, percent_used_cpu, cpu_load, alloc_mem, avail_mem, total_mem, percent_used_mem, colorize_node_state(node_state)])
+        rows.append([node_name, cpu_alloc, cpu_avail, cpu_tot, format_percentage(percent_used_cpu), f"{cpu_load:.2f}", alloc_mem, avail_mem, total_mem, format_percentage(percent_used_mem), colorize_node_state(node_state)])
 
     # Calculates the overall percent used for cpu
     overall_percent_used_cpu = 0
@@ -213,16 +247,34 @@ def parse_node_data(node_data_list):
     overall_available_mem = human_readable(overall_available_mem)
 
     # Prints a table with the node statistics
-    print(tabulate(rows, headers=['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'PercentUsedCPU', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem',
-                                  'PercentUsedMem', 'NodeState'], floatfmt=".2f"))
+    print_section_header("SLURM NODE STATUS")
+    
+    headers = ['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage', 'NodeState']
+    colored_headers = create_colored_headers(headers)
+    
+    print(tabulate(rows, headers=colored_headers, tablefmt="grid", floatfmt=".2f"))
 
-    print("\nTotals:")
+    print_section_header("CLUSTER TOTALS")
 
     # Prints the overall statistics
-    print(tabulate([[overall_node, overall_alloc_cpu, overall_available_cpu, overall_total_cpu, overall_percent_used_cpu, overall_cpu_load,
-                    overall_alloc_mem, overall_available_mem, overall_total_mem, overall_percent_used_mem]],
-                   headers=['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'PercentUsedCPU', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem',
-                            'PercentUsedMem'], floatfmt=".2f"))
+    totals_headers = ['Nodes', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'AvgLoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage']
+    colored_totals_headers = create_colored_headers(totals_headers)
+    
+    print(tabulate([[overall_node, overall_alloc_cpu, overall_available_cpu, overall_total_cpu, format_percentage(overall_percent_used_cpu), f"{overall_cpu_load:.2f}",
+                    overall_alloc_mem, overall_available_mem, overall_total_mem, format_percentage(overall_percent_used_mem)]],
+                   headers=colored_totals_headers, tablefmt="grid", floatfmt=".2f"))
+    
+    # Add a footer with legend
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}Legend:{Style.RESET_ALL}")
+    print(f"  {Fore.GREEN}█ Low usage (0-50%){Style.RESET_ALL}")
+    print(f"  {Fore.CYAN}█ Medium usage (50-75%){Style.RESET_ALL}")  
+    print(f"  {Fore.YELLOW}█ High usage (75-90%){Style.RESET_ALL}")
+    print(f"  {Fore.RED}█ Critical usage (90%+){Style.RESET_ALL}")
+    print(f"\n{Fore.CYAN}Node States:{Style.RESET_ALL}")
+    print(f"  {Fore.GREEN}idle{Style.RESET_ALL} - Available for jobs")
+    print(f"  {Fore.YELLOW}mixed{Style.RESET_ALL} - Partially allocated")
+    print(f"  {Fore.RED}allocated{Style.RESET_ALL} - Fully allocated")
+    print(f"  {Fore.RED}{Style.BRIGHT}down/drain/fail{Style.RESET_ALL} - Unavailable")
 
 # Main function
 def main():
