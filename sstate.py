@@ -4,6 +4,10 @@ import argparse
 import subprocess
 import re
 from tabulate import tabulate
+from colorama import Fore, Back, Style, init
+
+# Initialize colorama for cross-platform colored output
+init(autoreset=True)
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -33,6 +37,29 @@ def human_readable(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
+
+# This function adds color coding to node states
+def colorize_node_state(state):
+    """
+    Add color coding to node states:
+    - mixed: yellow
+    - allocated: orange (red, since orange isn't available in basic colorama)
+    - idle: green
+    - down/drain/fail: red
+    """
+    state_lower = state.lower()
+    
+    if 'mixed' in state_lower:
+        return f"{Fore.YELLOW}{state}{Style.RESET_ALL}"
+    elif 'allocated' in state_lower or 'alloc' in state_lower:
+        return f"{Fore.RED}{state}{Style.RESET_ALL}"  # Using red as closest to orange
+    elif 'idle' in state_lower:
+        return f"{Fore.GREEN}{state}{Style.RESET_ALL}"
+    elif any(bad_state in state_lower for bad_state in ['down', 'drain', 'fail', 'error']):
+        return f"{Fore.RED}{Style.BRIGHT}{state}{Style.RESET_ALL}"
+    else:
+        # Default color for unknown states
+        return f"{Fore.CYAN}{state}{Style.RESET_ALL}"
 
 # This function will take the scontrol output and reformat the node data into a list of kv pairs
 # This will allow for better parsing/filtering of the node data later in the script
@@ -164,7 +191,7 @@ def parse_node_data(node_data_list):
         total_mem = human_readable(total_mem)
         avail_mem = human_readable(avail_mem)
 
-        rows.append([node_name, cpu_alloc, cpu_avail, cpu_tot, percent_used_cpu, cpu_load, alloc_mem, avail_mem, total_mem, percent_used_mem, node_state])
+        rows.append([node_name, cpu_alloc, cpu_avail, cpu_tot, percent_used_cpu, cpu_load, alloc_mem, avail_mem, total_mem, percent_used_mem, colorize_node_state(node_state)])
 
     # Calculates the overall percent used for cpu
     overall_percent_used_cpu = 0
