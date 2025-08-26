@@ -1,0 +1,86 @@
+# Makefile for sstate binary compilation
+
+
+.PHONY: build clean install test help venv clean-venv
+
+# Virtualenv settings
+# VENV: location of virtualenv (default .venv)
+# USE_VENV: if 1, Makefile will prefer the venv python for build/test (default 1)
+VENV ?= .venv
+USE_VENV ?= 1
+
+ifeq ($(USE_VENV),1)
+PYTHON ?= $(VENV)/bin/python
+PIP ?= $(VENV)/bin/pip
+else
+PYTHON ?= python3
+PIP ?= pip3
+endif
+
+# Default target
+all: build
+
+# If USE_VENV is enabled, ensure venv is created before building
+ifneq ($(USE_VENV),0)
+BUILD_DEPS = venv
+else
+BUILD_DEPS =
+endif
+
+# Create a virtualenv and install requirements (if present)
+venv:
+	@echo "Creating virtualenv at $(VENV) (using system python3)..."
+	@python3 -m venv $(VENV)
+	@$(PIP) install --upgrade pip setuptools wheel || true
+	@if [ -f requirements.txt ]; then \
+		echo "Installing Python dependencies from requirements.txt..."; \
+		$(PIP) install -r requirements.txt; \
+	fi
+	@echo "Virtualenv ready at $(VENV). Use: export PYTHON=$(VENV)/bin/python"
+
+# Build the binary
+build: $(BUILD_DEPS)
+	@echo "Building sstate binary..."
+	@$(PYTHON) build.py
+
+# Clean build artifacts (does not remove virtualenv by default)
+clean:
+	@echo "Cleaning build artifacts..."
+	@$(PYTHON) build.py clean || true
+	@echo "Removed build artifacts (if any)."
+
+# Remove the virtualenv
+clean-venv:
+	@echo "Removing virtualenv at $(VENV)..."
+	@rm -rf $(VENV)
+	@echo "Virtualenv removed."
+
+# Clean everything
+clean-all: clean clean-venv
+	@echo "Cleaned all build artifacts and virtualenv."
+
+# Install the binary to /usr/local/bin (requires sudo)
+install: build
+	@echo "Installing sstate to /usr/local/bin..."
+	@sudo cp ./dist/sstate /usr/local/bin/sstate
+	@sudo chmod +x /usr/local/bin/sstate
+	@echo "Installation complete! You can now run 'sstate' from anywhere."
+
+# Test the binary
+test: build
+	@echo "Testing the binary..."
+	@./dist/sstate --help
+
+# Show help
+help:
+	@echo "Available targets:"
+	@echo "  venv        - Create a Python virtualenv at $(VENV) and install requirements.txt if present"
+	@echo "  build       - Build the sstate binary (depends on venv when USE_VENV=1)"
+	@echo "  clean       - Clean build artifacts (keeps the virtualenv)"
+	@echo "  clean-venv  - Remove the virtualenv directory ($(VENV))"
+	@echo "  install     - Install binary to /usr/local/bin (requires sudo)"
+	@echo "  test        - Test the built binary"
+	@echo "Environment variables you can set:"
+	@echo "  USE_VENV=0  - disable automatic venv usage for build/test (default 1)"
+	@echo "  VENV=...    - path to virtualenv directory (default .venv)"
+	@echo "  PYTHON=...  - override python interpreter to use"
