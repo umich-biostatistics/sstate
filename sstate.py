@@ -46,17 +46,19 @@ def colorize_node_state(state):
     - mixed: yellow
     - allocated: green
     - down/drain/fail: bold red
+    Note: Any bad state takes precedence if combined (e.g., mixed+down -> bad).
     """
     state_lower = state.lower()
     
-    if 'mixed' in state_lower:
-        return f"{Fore.YELLOW}{state}{Style.RESET_ALL}"
+    # Bad states take precedence over others
+    if any(bad_state in state_lower for bad_state in ['down', 'drain', 'fail', 'error']):
+        return f"{Fore.RED}{Style.BRIGHT}{state}{Style.RESET_ALL}"
     elif 'allocated' in state_lower or 'alloc' in state_lower:
         return f"{Fore.GREEN}{state}{Style.RESET_ALL}"
+    elif 'mixed' in state_lower:
+        return f"{Fore.YELLOW}{state}{Style.RESET_ALL}"
     elif 'idle' in state_lower:
         return f"{state}"  # Default color
-    elif any(bad_state in state_lower for bad_state in ['down', 'drain', 'fail', 'error']):
-        return f"{Fore.RED}{Style.BRIGHT}{state}{Style.RESET_ALL}"
     else:
         # Default color for unknown states
         return f"{state}"
