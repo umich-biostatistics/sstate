@@ -22,11 +22,11 @@ app = typer.Typer(add_completion=False, context_settings={"help_option_names": [
 
 # This function converts MB to larger units
 def human_readable(num, suffix='B'):
-    for unit in ['Mi','Gi','Ti','Pi','Ei','Zi']:
+    for unit in ['M','G','T','P','E','Z']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
-    return "%.1f%s%s" % (num, 'Yi', suffix)
+    return "%.1f%s%s" % (num, 'Y', suffix)
 
 # This function adds color coding to node states
 def colorize_node_state(state):
