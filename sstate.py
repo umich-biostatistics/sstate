@@ -1,34 +1,17 @@
 #!/bin/env python3
 
-import argparse
 import subprocess
 import re
+from typing import Optional
+
+import typer
 from tabulate import tabulate
 from colorama import Fore, Back, Style, init
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Query node data in Slurm.",
-        usage="""
-        # Querying all nodes:
-        sstate
-
-        # Querying a specific partition with example:
-        sstate -p $partition_name
-        sstate -p bdsi
-        """
-    )
-    parser.add_argument(
-        "-p", "--partition",
-        help="Query specific partition. If this is not specified all nodes will be shown.",
-        type=str,
-        metavar=""
-    )
-    args = parser.parse_args()
-    return args
+# Typer-based CLI; see main() below for options
 
 # This function converts MB to larger units
 def human_readable(num, suffix='B'):
@@ -98,30 +81,41 @@ def create_colored_headers(headers):
 
 # This function will take the scontrol output and reformat the node data into a list of kv pairs
 # This will allow for better parsing/filtering of the node data later in the script
-def reformat_scontrol_output(scontrol_output, node_data_list=[]):
+def reformat_scontrol_output(scontrol_output, node_data_list=None):
+    """Reformat scontrol oneliner output into list-of-lists of Key=Value strings."""
+    if node_data_list is None:
+        node_data_list = []
     scontrol_output = scontrol_output.splitlines()
     for node_output in scontrol_output:
         temp_data_list = []
         node = re.split(r"([A-Z]\w+=)", node_output)
         for element, line in enumerate(node):
             if re.match(r"([A-Z]\w+=)", line):
-                temp_data_list.append("{0}{1}".format(node[element], node[element+1]))
+                temp_data_list.append("{0}{1}".format(node[element], node[element + 1]))
         node_data_list.append(temp_data_list)
     return node_data_list
 
 # This function will filter out unwanted nodes if a partition is specified
-def filter_partition_node_data(args, node_data_list, partition_node_data_list=[]):
+def filter_partition_node_data(partition: Optional[str], node_data_list, partition_node_data_list=None):
+    """Filter nodes that belong to a given partition name (case-insensitive).
+
+    Special-case: if partition == 'debug', only include nodes where Partitions=debug exactly.
+    """
+    if partition_node_data_list is None:
+        partition_node_data_list = []
+    if not partition:
+        return node_data_list
     for node in node_data_list:
         for line in node:
             if line.split("=")[0].strip() == "Partitions":
-                if args.partition == "debug":
+                if partition == "debug":
                     if line.split("=")[1].strip() != "debug":
                         continue
                     else:
                         partition_node_data_list.append(node)
                 else:
-                    for partition in line.split("=")[1].split(","):
-                        if args.partition.lower() == partition.strip():
+                    for p in line.split("=")[1].split(","):
+                        if partition.lower() == p.strip().lower():
                             partition_node_data_list.append(node)
     return partition_node_data_list
 
@@ -310,17 +304,35 @@ def parse_node_data(node_data_list):
     print(f"  {Fore.RED}{Style.BRIGHT}down/drain/fail{Style.RESET_ALL} - Unavailable")
 
 # Main function
-def main():
-    # Parse command line arguments
-    args = parse_args()
+def main(
+    partition: Optional[str] = typer.Option(
+        None,
+        "--partition",
+        "-p",
+        help="Query specific partition. If this is not specified all nodes will be shown.",
+        metavar="",
+    )
+):
+    """Query node data in Slurm and present a color-coded summary."""
 
     # Get node data via scontrol and reformat it for easier usability
-    scontrol_output = subprocess.check_output("$(/usr/bin/which scontrol) show nodes --oneliner", shell=True).decode()
+    try:
+        scontrol_output = subprocess.check_output(
+            "$(/usr/bin/which scontrol) show nodes --oneliner",
+            shell=True,
+        ).decode()
+    except subprocess.CalledProcessError:
+        typer.secho(
+            "Error: Failed to run 'scontrol'. Ensure Slurm client tools are installed and available in PATH.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1)
     node_data_list = reformat_scontrol_output(scontrol_output)
 
     # If a partition is specified, filter out unwanted nodes from reformatted scontrol output
-    if args.partition:
-        node_data_list = filter_partition_node_data(args, node_data_list)
+    if partition:
+        node_data_list = filter_partition_node_data(partition, node_data_list)
 
     # Parse through the node data to get available, allocated, and total resources
     # This will also calculate some resource averages and usage percents, as well as print output
@@ -328,4 +340,4 @@ def main():
 
 # Execute main function
 if __name__ == '__main__':
-    main()
+    typer.run(main)
