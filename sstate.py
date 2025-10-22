@@ -20,12 +20,12 @@ app = typer.Typer(add_completion=False, context_settings={"help_option_names": [
 
 ## argparse removed: Typer CLI is now used
 
-# This function converts MB to larger units
+# This function converts MB to larger units using decimal (1000-based) conversion
 def human_readable(num, suffix='B'):
     for unit in ['M','G','T','P','E','Z']:
-        if abs(num) < 1024.0:
+        if abs(num) < 1000.0:
             return "%3.1f%s%s" % (num, unit, suffix)
-        num /= 1024.0
+        num /= 1000.0
     return "%.1f%s%s" % (num, 'Y', suffix)
 
 # This function adds color coding to node states
