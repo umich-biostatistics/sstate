@@ -5,6 +5,10 @@ import subprocess
 import re
 from tabulate import tabulate
 from colorama import Fore, Back, Style, init
+from rich.console import Console
+from rich.table import Table
+from rich import box
+from rich.text import Text
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
@@ -83,6 +87,26 @@ def format_percentage(percentage):
     bar = "█" * min(int(percentage / 10), 10)
     return f"{color}{percentage:5.1f}%{Style.RESET_ALL} {color}{bar}{Style.RESET_ALL}"
 
+def format_percentage_rich(percentage: float) -> Text:
+    """Format percentage with visual bar indicator using Rich styles."""
+    if percentage == 0:
+        style = None
+    elif percentage >= 75:
+        style = "bold green"
+    elif percentage >= 50:
+        style = "cyan"
+    elif percentage >= 25:
+        style = "blue"
+    else:
+        style = "yellow"
+    bar = "█" * min(int(percentage / 10), 10)
+    txt = Text()
+    txt.append(f"{percentage:5.1f}%", style=style)
+    if bar:
+        txt.append(" ")
+        txt.append(bar, style=style)
+    return txt
+
 def print_section_header(title):
     """Print a styled section header"""
     print(f"\n{Fore.CYAN}{Style.BRIGHT}{'=' * 80}")
@@ -95,6 +119,17 @@ def create_colored_headers(headers):
     for header in headers:
         colored_headers.append(f"{Fore.BLUE}{Style.BRIGHT}{header}{Style.RESET_ALL}")
     return colored_headers
+
+def colorize_node_state_rich(state: str) -> Text:
+    state_lower = state.lower()
+    if any(bad_state in state_lower for bad_state in ['down', 'drain', 'fail', 'error']):
+        return Text(state, style="bold red")
+    elif 'allocated' in state_lower or 'alloc' in state_lower:
+        return Text(state, style="green")
+    elif 'mixed' in state_lower:
+        return Text(state, style="yellow")
+    else:
+        return Text(state)
 
 # This function will take the scontrol output and reformat the node data into a list of kv pairs
 # This will allow for better parsing/filtering of the node data later in the script
@@ -127,7 +162,7 @@ def filter_partition_node_data(args, node_data_list, partition_node_data_list=[]
 
 # This function will parse through node data to get available, allocated, and total resources
 # It will also calculate some resource averages and usage percents, as well as print output
-def parse_node_data(node_data_list):
+def parse_node_data(node_data_list, use_rich: bool = False):
     # Initializes variables to track resource values
     rows = []
     overall_node = 0
@@ -139,6 +174,18 @@ def parse_node_data(node_data_list):
     overall_alloc_mem = 0
     overall_available_mem = 0
     overall_total_mem = 0
+
+    # Setup Rich tables if requested
+    if use_rich:
+        node_table = Table(
+            title=None,
+            box=box.SIMPLE_HEAVY,
+            show_lines=False,
+            header_style="bold blue",
+            pad_edge=False,
+        )
+        for col in ['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage', 'NodeState']:
+            node_table.add_column(col, overflow="fold")
 
     # Loop through each node and gather scontrol info on them
     # This will also get resources and calculate resource totals and averages
@@ -234,20 +281,35 @@ def parse_node_data(node_data_list):
         formatted_cpu_load = f"{cpu_load:.2f}"
         formatted_node_state = colorize_node_state(node_state)
 
-        # Append row with formatted values
-        rows.append([
-            node_name,
-            cpu_alloc,
-            cpu_avail,
-            cpu_tot,
-            formatted_cpu_usage,
-            formatted_cpu_load,
-            alloc_mem_hr,
-            avail_mem_hr,
-            total_mem_hr,
-            formatted_mem_usage,
-            formatted_node_state
-        ])
+        if use_rich:
+            node_table.add_row(
+                node_name,
+                str(cpu_alloc),
+                str(cpu_avail),
+                str(cpu_tot),
+                format_percentage_rich(percent_used_cpu),
+                formatted_cpu_load,
+                alloc_mem_hr,
+                avail_mem_hr,
+                total_mem_hr,
+                format_percentage_rich(percent_used_mem),
+                colorize_node_state_rich(node_state),
+            )
+        else:
+            # Append row with formatted values (tabulate path)
+            rows.append([
+                node_name,
+                cpu_alloc,
+                cpu_avail,
+                cpu_tot,
+                formatted_cpu_usage,
+                formatted_cpu_load,
+                alloc_mem_hr,
+                avail_mem_hr,
+                total_mem_hr,
+                formatted_mem_usage,
+                formatted_node_state
+            ])
 
     # Calculates the overall percent used for cpu
     overall_percent_used_cpu = 0
@@ -268,51 +330,98 @@ def parse_node_data(node_data_list):
     overall_total_mem = human_readable(overall_total_mem)
     overall_available_mem = human_readable(overall_available_mem)
 
-    # Prints a table with the node statistics
-    print_section_header("SLURM NODE STATUS")
-    
-    headers = ['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage', 'NodeState']
-    colored_headers = create_colored_headers(headers)
-    
-    print(tabulate(rows, headers=colored_headers, tablefmt="grid", floatfmt=".2f"))
+    if use_rich:
+        console = Console()
+        # Nodes table
+        console.rule("[bold cyan]SLURM NODE STATUS")
+        console.print(node_table)
 
-    print_section_header("CLUSTER TOTALS")
+        # Totals table
+        console.rule("[bold cyan]CLUSTER TOTALS")
+        totals_table = Table(box=box.SIMPLE_HEAVY, show_lines=False, header_style="bold blue", pad_edge=False)
+        for col in ['Nodes', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'AvgLoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage']:
+            totals_table.add_column(col)
+        totals_table.add_row(
+            str(overall_node),
+            str(overall_alloc_cpu),
+            str(overall_available_cpu),
+            str(overall_total_cpu),
+            format_percentage_rich(overall_percent_used_cpu),
+            f"{overall_cpu_load:.2f}",
+            overall_alloc_mem,
+            overall_available_mem,
+            overall_total_mem,
+            format_percentage_rich(overall_percent_used_mem),
+        )
+        console.print(totals_table)
 
-    # Prints the overall statistics
-    totals_headers = ['Nodes', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'AvgLoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage']
-    colored_totals_headers = create_colored_headers(totals_headers)
-    
-    totals_row = [  
-        overall_node,  
-        overall_alloc_cpu,  
-        overall_available_cpu,  
-        overall_total_cpu,  
-        format_percentage(overall_percent_used_cpu),  
-        f"{overall_cpu_load:.2f}",  
-        overall_alloc_mem,  
-        overall_available_mem,  
-        overall_total_mem,  
-        format_percentage(overall_percent_used_mem)  
-    ]  
-    print(tabulate([totals_row], headers=colored_totals_headers, tablefmt="grid", floatfmt=".2f"))  
-    
-    # Add a footer with legend
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}Legend:{Style.RESET_ALL}")
-    print(f"  0% usage - No color")
-    print(f"  {Fore.YELLOW}█ Low usage (1-25%){Style.RESET_ALL}")
-    print(f"  {Fore.BLUE}█ Moderate usage (25-50%){Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}█ High usage (50-75%){Style.RESET_ALL}")  
-    print(f"  {Fore.GREEN}{Style.BRIGHT}█ Full usage (75-100%){Style.RESET_ALL}")
-    print(f"\n{Fore.CYAN}Node States:{Style.RESET_ALL}")
-    print(f"  idle - Available for jobs")
-    print(f"  {Fore.YELLOW}mixed{Style.RESET_ALL} - Partially allocated")
-    print(f"  {Fore.GREEN}allocated{Style.RESET_ALL} - Fully allocated")
-    print(f"  {Fore.RED}{Style.BRIGHT}down/drain/fail{Style.RESET_ALL} - Unavailable")
+        # Legend
+        console.print()
+        console.print(Text("Legend:", style="bold cyan"))
+        console.print("  0% usage - No color")
+        console.print(Text("  █ Low usage (1-25%)", style="yellow"))
+        console.print(Text("  █ Moderate usage (25-50%)", style="blue"))
+        console.print(Text("  █ High usage (50-75%)", style="cyan"))
+        console.print(Text("  █ Full usage (75-100%)", style="bold green"))
+        console.print()
+        console.print(Text("Node States:", style="cyan"))
+        console.print("  idle - Available for jobs")
+        console.print(Text("  mixed - Partially allocated", style="yellow"))
+        console.print(Text("  allocated - Fully allocated", style="green"))
+        console.print(Text("  down/drain/fail - Unavailable", style="bold red"))
+        return
+    else:
+        # Tabulate-based output (existing default)
+        print_section_header("SLURM NODE STATUS")
+        headers = ['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage', 'NodeState']
+        colored_headers = create_colored_headers(headers)
+        print(tabulate(rows, headers=colored_headers, tablefmt="grid", floatfmt=".2f"))
+
+        print_section_header("CLUSTER TOTALS")
+        totals_headers = ['Nodes', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'AvgLoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage']
+        colored_totals_headers = create_colored_headers(totals_headers)
+        totals_row = [
+            overall_node,
+            overall_alloc_cpu,
+            overall_available_cpu,
+            overall_total_cpu,
+            format_percentage(overall_percent_used_cpu),
+            f"{overall_cpu_load:.2f}",
+            overall_alloc_mem,
+            overall_available_mem,
+            overall_total_mem,
+            format_percentage(overall_percent_used_mem)
+        ]
+        print(tabulate([totals_row], headers=colored_totals_headers, tablefmt="grid", floatfmt=".2f"))
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}Legend:{Style.RESET_ALL}")
+        print(f"  0% usage - No color")
+        print(f"  {Fore.YELLOW}█ Low usage (1-25%){Style.RESET_ALL}")
+        print(f"  {Fore.BLUE}█ Moderate usage (25-50%){Style.RESET_ALL}")
+        print(f"  {Fore.CYAN}█ High usage (50-75%){Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}{Style.BRIGHT}█ Full usage (75-100%){Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}Node States:{Style.RESET_ALL}")
+        print(f"  idle - Available for jobs")
+        print(f"  {Fore.YELLOW}mixed{Style.RESET_ALL} - Partially allocated")
+        print(f"  {Fore.GREEN}allocated{Style.RESET_ALL} - Fully allocated")
+        print(f"  {Fore.RED}{Style.BRIGHT}down/drain/fail{Style.RESET_ALL} - Unavailable")
 
 # Main function
-def main():
-    # Parse command line arguments
-    args = parse_args()
+def main(
+    partition: Optional[str] = typer.Option(
+        None,
+        "--partition",
+        "-p",
+        help="Query specific partition. If this is not specified all nodes will be shown.",
+        metavar="",
+    ),
+    rich_output: bool = typer.Option(
+        False,
+        "--rich/--no-rich",
+        help="Use Rich tables for cleaner, more compact output.",
+        show_default=True,
+    ),
+):
+    """Query node data in Slurm and present a color-coded summary."""
 
     # Get node data via scontrol and reformat it for easier usability
     scontrol_output = subprocess.check_output("$(/usr/bin/which scontrol) show nodes --oneliner", shell=True).decode()
@@ -324,7 +433,7 @@ def main():
 
     # Parse through the node data to get available, allocated, and total resources
     # This will also calculate some resource averages and usage percents, as well as print output
-    parse_node_data(node_data_list)
+    parse_node_data(node_data_list, use_rich=rich_output)
 
 # Execute main function
 if __name__ == '__main__':
