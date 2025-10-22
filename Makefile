@@ -10,11 +10,12 @@ VENV ?= .venv
 USE_VENV ?= 1
 
 ifeq ($(USE_VENV),1)
-PYTHON ?= $(VENV)/bin/python
-PIP ?= $(VENV)/bin/pip
+PYTHON := $(VENV)/bin/python
+PIP := $(VENV)/bin/pip
+export PATH := $(VENV)/bin:$(PATH)
 else
-PYTHON ?= python3
-PIP ?= pip3
+PYTHON := python3
+PIP := pip3
 endif
 
 # Default target
@@ -27,10 +28,14 @@ else
 BUILD_DEPS =
 endif
 
-# Create a virtualenv and install requirements (if present)
+# Create a virtualenv if missing and install requirements (if present)
 venv:
-	@echo "Creating virtualenv at $(VENV) (using system python3)..."
-	@python3 -m venv $(VENV)
+	@if [ -d "$(VENV)" ]; then \
+		echo "Virtualenv already exists at $(VENV)"; \
+	else \
+		echo "Creating virtualenv at $(VENV) (using system python3)..."; \
+		python3 -m venv $(VENV); \
+	fi
 	@$(PIP) install --upgrade pip setuptools wheel || true
 	@if [ -f requirements.txt ]; then \
 		echo "Installing Python dependencies from requirements.txt..."; \
@@ -38,8 +43,30 @@ venv:
 	fi
 	@echo "Virtualenv ready at $(VENV). Use: export PYTHON=$(VENV)/bin/python"
 
+# Sync dependencies into an existing virtualenv (does not create it)
+venv-sync:
+	@if [ ! -d "$(VENV)" ]; then \
+		echo "No virtualenv at $(VENV). Run 'make venv' first."; \
+		exit 1; \
+	fi
+	@$(PIP) install --upgrade pip setuptools wheel || true
+	@if [ -f requirements.txt ]; then \
+		echo "Installing Python dependencies from requirements.txt..."; \
+		$(PIP) install -r requirements.txt; \
+	fi
+
 # Build the binary
 build: $(BUILD_DEPS)
+	@if [ "$(USE_VENV)" = "1" ]; then \
+		if [ ! -x "$(VENV)/bin/python" ]; then \
+			echo "Error: Virtualenv not found at $(VENV). Run 'make venv' first."; \
+			exit 1; \
+		fi; \
+		if ! $(VENV)/bin/python -m pip show pyinstaller >/dev/null 2>&1; then \
+			echo "Error: PyInstaller not installed in venv. Run 'make venv' or 'make venv-sync'."; \
+			exit 1; \
+		fi; \
+	fi
 	@echo "Building sstate binary..."
 	@$(PYTHON) build.py
 
@@ -74,7 +101,8 @@ test: build
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  venv        - Create a Python virtualenv at $(VENV) and install requirements.txt if present"
+	@echo "  venv        - Create a Python virtualenv at $(VENV) if missing and install requirements.txt"
+	@echo "  venv-sync   - Install/upgrade requirements into existing virtualenv (no recreate)"
 	@echo "  build       - Build the sstate binary (depends on venv when USE_VENV=1)"
 	@echo "  clean       - Clean build artifacts (keeps the virtualenv)"
 	@echo "  clean-venv  - Remove the virtualenv directory ($(VENV))"
