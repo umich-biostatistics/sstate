@@ -15,6 +15,9 @@ from rich.text import Text
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
 
+# Create Typer app with -h enabled for help
+app = typer.Typer(add_completion=False, context_settings={"help_option_names": ["-h", "--help"]})
+
 ## argparse removed: Typer CLI is now used
 
 # This function converts MB to larger units
@@ -151,7 +154,7 @@ def filter_partition_node_data(partition, node_data_list, partition_node_data_li
 
 # This function will parse through node data to get available, allocated, and total resources
 # It will also calculate some resource averages and usage percents, as well as print output
-def parse_node_data(node_data_list, use_rich: bool = False):
+def parse_node_data(node_data_list, use_rich: bool = False, show_legend: bool = False):
     # Initializes variables to track resource values
     rows = []
     overall_node = 0
@@ -340,20 +343,21 @@ def parse_node_data(node_data_list, use_rich: bool = False):
         )
         console.print(totals_table)
 
-        # Legend
-        console.print()
-        console.print(Text("Legend:", style="bold cyan"))
-        console.print("  0% usage - No color")
-        console.print(Text("  █ Low usage (1-25%)", style="yellow"))
-        console.print(Text("  █ Moderate usage (25-50%)", style="blue"))
-        console.print(Text("  █ High usage (50-75%)", style="cyan"))
-        console.print(Text("  █ Full usage (75-100%)", style="bold green"))
-        console.print()
-        console.print(Text("Node States:", style="cyan"))
-        console.print("  idle - Available for jobs")
-        console.print(Text("  mixed - Partially allocated", style="yellow"))
-        console.print(Text("  allocated - Fully allocated", style="green"))
-        console.print(Text("  down/drain/fail - Unavailable", style="bold red"))
+        # Legend (optional)
+        if show_legend:
+            console.print()
+            console.print(Text("Legend:", style="bold cyan"))
+            console.print("  0% usage - No color")
+            console.print(Text("  █ Low usage (1-25%)", style="yellow"))
+            console.print(Text("  █ Moderate usage (25-50%)", style="blue"))
+            console.print(Text("  █ High usage (50-75%)", style="cyan"))
+            console.print(Text("  █ Full usage (75-100%)", style="bold green"))
+            console.print()
+            console.print(Text("Node States:", style="cyan"))
+            console.print("  idle - Available for jobs")
+            console.print(Text("  mixed - Partially allocated", style="yellow"))
+            console.print(Text("  allocated - Fully allocated", style="green"))
+            console.print(Text("  down/drain/fail - Unavailable", style="bold red"))
         return
     else:
         # Tabulate-based output (existing default)
@@ -391,6 +395,7 @@ def parse_node_data(node_data_list, use_rich: bool = False):
         print(f"  {Fore.RED}{Style.BRIGHT}down/drain/fail{Style.RESET_ALL} - Unavailable")
 
 # Main function
+@app.command()
 def main(
     partition: Optional[str] = typer.Option(
         None,
@@ -403,6 +408,12 @@ def main(
         True,
         "--rich/--no-rich",
         help="Use Rich tables for cleaner, more compact output.",
+        show_default=True,
+    ),
+    show_legend: bool = typer.Option(
+        False,
+        "--legend/--no-legend",
+        help="Show usage and state legend.",
         show_default=True,
     ),
 ):
@@ -418,8 +429,8 @@ def main(
 
     # Parse through the node data to get available, allocated, and total resources
     # This will also calculate some resource averages and usage percents, as well as print output
-    parse_node_data(node_data_list, use_rich=rich_output)
+    parse_node_data(node_data_list, use_rich=rich_output, show_legend=show_legend)
 
 # Execute main function
 if __name__ == '__main__':
-    typer.run(main)
+    app()
