@@ -173,7 +173,7 @@ def parse_node_data(node_data_list, use_rich: bool = False):
             header_style="bold blue",
             pad_edge=False,
         )
-        for col in ['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage', 'NodeState']:
+        for col in ['Node', 'CPU', 'CPU Usage', 'CPULoad', 'Memory', 'Mem Usage', 'State']:
             node_table.add_column(col, overflow="fold")
 
     # Loop through each node and gather scontrol info on them
@@ -271,16 +271,14 @@ def parse_node_data(node_data_list, use_rich: bool = False):
         formatted_node_state = colorize_node_state(node_state)
 
         if use_rich:
+            cpu_display = f"{cpu_alloc}/{cpu_tot}"
+            mem_display = f"{alloc_mem_hr}/{total_mem_hr}"
             node_table.add_row(
                 node_name,
-                str(cpu_alloc),
-                str(cpu_avail),
-                str(cpu_tot),
+                cpu_display,
                 format_percentage_rich(percent_used_cpu),
                 formatted_cpu_load,
-                alloc_mem_hr,
-                avail_mem_hr,
-                total_mem_hr,
+                mem_display,
                 format_percentage_rich(percent_used_mem),
                 colorize_node_state_rich(node_state),
             )
@@ -328,18 +326,16 @@ def parse_node_data(node_data_list, use_rich: bool = False):
         # Totals table
         console.rule("[bold cyan]CLUSTER TOTALS")
         totals_table = Table(box=box.SIMPLE_HEAVY, show_lines=False, header_style="bold blue", pad_edge=False)
-        for col in ['Nodes', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'AvgLoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage']:
+        for col in ['Nodes', 'CPU', 'CPU Usage', 'AvgLoad', 'Memory', 'Mem Usage']:
             totals_table.add_column(col)
+        cpu_totals_display = f"{overall_alloc_cpu}/{overall_total_cpu}"
+        mem_totals_display = f"{overall_alloc_mem}/{overall_total_mem}"
         totals_table.add_row(
             str(overall_node),
-            str(overall_alloc_cpu),
-            str(overall_available_cpu),
-            str(overall_total_cpu),
+            cpu_totals_display,
             format_percentage_rich(overall_percent_used_cpu),
             f"{overall_cpu_load:.2f}",
-            overall_alloc_mem,
-            overall_available_mem,
-            overall_total_mem,
+            mem_totals_display,
             format_percentage_rich(overall_percent_used_mem),
         )
         console.print(totals_table)
