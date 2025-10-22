@@ -169,9 +169,10 @@ def parse_node_data(node_data_list, use_rich: bool = False):
         node_table = Table(
             title=None,
             box=box.SIMPLE_HEAVY,
-            show_lines=False,
+            show_lines=True,  # Enable horizontal lines between rows
             header_style="bold blue",
             pad_edge=False,
+            row_styles=["none", "dim"]  # Alternate row styling for readability
         )
         for col in ['Node', 'AllocCPU', 'AvailCPU', 'TotalCPU', 'CPU Usage', 'CPULoad', 'AllocMem', 'AvailMem', 'TotalMem', 'Mem Usage', 'NodeState']:
             node_table.add_column(col, overflow="fold")
