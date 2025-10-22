@@ -1,8 +1,10 @@
 #!/bin/env python3
 
-import argparse
 import subprocess
 import re
+from typing import Optional
+
+import typer
 from tabulate import tabulate
 from colorama import Fore, Back, Style, init
 from rich.console import Console
@@ -13,26 +15,7 @@ from rich.text import Text
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Query node data in Slurm.",
-        usage="""
-        # Querying all nodes:
-        sstate
-
-        # Querying a specific partition with example:
-        sstate -p $partition_name
-        sstate -p bdsi
-        """
-    )
-    parser.add_argument(
-        "-p", "--partition",
-        help="Query specific partition. If this is not specified all nodes will be shown.",
-        type=str,
-        metavar=""
-    )
-    args = parser.parse_args()
-    return args
+## argparse removed: Typer CLI is now used
 
 # This function converts MB to larger units
 def human_readable(num, suffix='B'):
@@ -133,7 +116,9 @@ def colorize_node_state_rich(state: str) -> Text:
 
 # This function will take the scontrol output and reformat the node data into a list of kv pairs
 # This will allow for better parsing/filtering of the node data later in the script
-def reformat_scontrol_output(scontrol_output, node_data_list=[]):
+def reformat_scontrol_output(scontrol_output, node_data_list=None):
+    if node_data_list is None:
+        node_data_list = []
     scontrol_output = scontrol_output.splitlines()
     for node_output in scontrol_output:
         temp_data_list = []
@@ -145,18 +130,22 @@ def reformat_scontrol_output(scontrol_output, node_data_list=[]):
     return node_data_list
 
 # This function will filter out unwanted nodes if a partition is specified
-def filter_partition_node_data(args, node_data_list, partition_node_data_list=[]):
+def filter_partition_node_data(partition, node_data_list, partition_node_data_list=None):
+    if partition_node_data_list is None:
+        partition_node_data_list = []
+    if not partition:
+        return node_data_list
     for node in node_data_list:
         for line in node:
             if line.split("=")[0].strip() == "Partitions":
-                if args.partition == "debug":
+                if partition == "debug":
                     if line.split("=")[1].strip() != "debug":
                         continue
                     else:
                         partition_node_data_list.append(node)
                 else:
-                    for partition in line.split("=")[1].split(","):
-                        if args.partition.lower() == partition.strip():
+                    for p in line.split("=")[1].split(","):
+                        if partition.lower() == p.strip().lower():
                             partition_node_data_list.append(node)
     return partition_node_data_list
 
@@ -428,8 +417,8 @@ def main(
     node_data_list = reformat_scontrol_output(scontrol_output)
 
     # If a partition is specified, filter out unwanted nodes from reformatted scontrol output
-    if args.partition:
-        node_data_list = filter_partition_node_data(args, node_data_list)
+    if partition:
+        node_data_list = filter_partition_node_data(partition, node_data_list)
 
     # Parse through the node data to get available, allocated, and total resources
     # This will also calculate some resource averages and usage percents, as well as print output
@@ -437,4 +426,4 @@ def main(
 
 # Execute main function
 if __name__ == '__main__':
-    main()
+    typer.run(main)
