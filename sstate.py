@@ -405,7 +405,7 @@ def main(
         metavar="",
     ),
     rich_output: bool = typer.Option(
-        False,
+        True,
         "--rich/--no-rich",
         help="Use Rich tables for cleaner, more compact output.",
         show_default=True,
